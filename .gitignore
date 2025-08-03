@@ -9,6 +9,8 @@ build/
 
 # Environment variables
 .env
+.env.*
+*.env
 .env.local
 .env.development.local
 .env.test.local
@@ -96,3 +98,31 @@ dist/
 
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
+
+# Project-specific exclusions
+# Scraping scripts and tools
+scripts/
+*scraper*.py
+*scraper*.js
+
+# Database files and credentials
+database_migration*.sql
+sample_*data*.sql
+mymcp-me-*.json
+*.key
+*.pem
+
+# Data directories
+backend/data/
+backend/clean_extension/
+backend/extension/
+
+# Service configurations
+services/
+
+# Documentation (keep essential docs, exclude dev notes)
+_*.md
+TESTING_GUIDE.md
+
+# GitHub links database from scraper
+github_links_database*.json

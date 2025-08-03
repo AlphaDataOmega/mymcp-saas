@@ -196,7 +196,7 @@ export class MarketplaceService {
    * Install a marketplace server
    */
   async installServer(serverId: string): Promise<{
-    success: bool;
+    success: boolean;
     installation?: UserServerInstallation;
     error?: string;
     requiresSetup?: boolean;

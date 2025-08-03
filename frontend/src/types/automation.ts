@@ -10,7 +10,8 @@ export interface RecordingSession {
   endTime?: number;
   duration?: number;
   actions: RecordedAction[];
-  metadata: {
+  actionsCount?: number; // Count of actions (returned by sessions list endpoint)
+  metadata?: {
     browserInfo: BrowserInfo;
     userAgent: string;
     screenResolution: string;

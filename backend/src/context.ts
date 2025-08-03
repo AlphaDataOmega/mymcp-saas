@@ -22,13 +22,17 @@ export class Context {
   }
 
   async sendSocketMessage(action: string, data: any): Promise<any> {
+    console.log(`🚀 Context.sendSocketMessage called with action: "${action}", data:`, JSON.stringify(data));
+    
     if (!this.hasWs()) {
       throw new Error(noConnectionMessage);
     }
 
     return new Promise((resolve, reject) => {
       const messageId = Math.random().toString(36).substring(7);
-      const message = { id: messageId, action, data };
+      const message = { id: messageId, method: action, params: data };
+      
+      console.log("🚀 Sending WebSocket message:", JSON.stringify(message));
 
       // Set up message listener for response
       const messageHandler = (rawData: WebSocket.Data) => {
@@ -39,7 +43,7 @@ export class Context {
             if (response.error) {
               reject(new Error(response.error));
             } else {
-              resolve(response.data);
+              resolve(response.result || response.data);
             }
           }
         } catch (error) {

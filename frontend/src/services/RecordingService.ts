@@ -94,10 +94,10 @@ export class RecordingService {
   }
 
   /**
-   * Generate tool code from recording session
+   * Generate tool code from recording session with customization
    * Extracted from: recorder.py:generate_tool_code()
    */
-  async generateTool(
+  async generateToolFromSession(
     sessionId: string, 
     customization: {
       name: string;
@@ -148,6 +148,33 @@ export class RecordingService {
   }
 
   /**
+   * Check current recording status (for sync between frontend and extension)
+   */
+  async checkRecordingStatus(): Promise<{
+    isRecording: boolean;
+    currentSession?: {
+      id: string;
+      name: string;
+      startTime: number;
+      actionsCount: number;
+      actions?: RecordedAction[];
+    } | null;
+  }> {
+    try {
+      const response = await this.apiClient.get('/recorder/status');
+      return {
+        isRecording: response.isRecording || false,
+        currentSession: response.currentSession || null
+      };
+    } catch (error) {
+      return {
+        isRecording: false,
+        currentSession: null
+      };
+    }
+  }
+
+  /**
    * Get browser connection status
    * Extracted from: recorder.py:check_extension_connection()
    */
@@ -159,7 +186,7 @@ export class RecordingService {
     try {
       const response = await this.apiClient.get('/recorder/connection-status');
       return {
-        connected: response.connected || false,
+        connected: response.extensionConnected || false,
         extensionVersion: response.extensionVersion,
         capabilities: response.capabilities || []
       };
@@ -221,6 +248,150 @@ export class RecordingService {
       completedSessions: completed.length,
       toolsGenerated,
       hoursRecorded: Math.round(totalDuration / (1000 * 60 * 60) * 10) / 10
+    };
+  }
+
+  /**
+   * Force stop any active recording (for reset functionality)
+   */
+  async forceStopRecording(): Promise<void> {
+    try {
+      const response = await this.apiClient.post('/recorder/force-stop');
+      if (!response.success) {
+        console.warn('Force stop recording failed:', response.error);
+      }
+    } catch (error) {
+      console.warn('Force stop recording failed:', error);
+      // Don't throw - this is for cleanup purposes
+    }
+  }
+
+  /**
+   * Clear all recording sessions (for reset functionality)
+   */
+  async clearAllSessions(): Promise<void> {
+    try {
+      const response = await this.apiClient.post('/recorder/sessions/clear');
+      if (!response.success) {
+        console.warn('Clear all sessions failed:', response.error);
+      }
+    } catch (error) {
+      console.warn('Clear all sessions failed:', error);
+      // Don't throw - this is for cleanup purposes
+    }
+  }
+
+  /**
+   * Get all recording sessions (alias for listSessions)
+   */
+  async getSessions(): Promise<RecordingSession[]> {
+    return this.listSessions();
+  }
+
+  /**
+   * Generate tool from latest/current session
+   */
+  async generateTool(toolName?: string, toolDescription?: string): Promise<string> {
+    const response = await this.apiClient.post('/recorder/generate-tool', {
+      toolName,
+      toolDescription
+    });
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to generate tool');
+    }
+
+    return response.toolCode || response.code || '';
+  }
+
+  /**
+   * Generate tool from a specific session
+   */
+  async generateToolFromSpecificSession(sessionId: string, toolName?: string, toolDescription?: string): Promise<string> {
+    console.log('🔧 Generating tool from session:', sessionId);
+    const response = await this.apiClient.post(`/recorder/sessions/${sessionId}/generate-tool`, {
+      toolName,
+      toolDescription
+    });
+    
+    console.log('📄 Tool generation response:', {
+      success: response.success,
+      hasToolCode: !!response.toolCode,
+      hasCode: !!response.code,
+      toolCodeLength: response.toolCode?.length || 0,
+      codeLength: response.code?.length || 0,
+      responseKeys: Object.keys(response)
+    });
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to generate tool from session');
+    }
+
+    const code = response.toolCode || response.code || '';
+    console.log('🎯 Final tool code length:', code.length);
+    return code;
+  }
+
+  /**
+   * Save generated tool with name and description
+   */
+  async saveGeneratedTool(name: string, description: string, code: string): Promise<void> {
+    const response = await this.apiClient.post('/tools/save', {
+      name,
+      description,
+      code,
+      language: 'python',
+      category: 'browser_automation',
+      tags: ['recorded', 'browser'],
+      isPublic: false
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to save tool');
+    }
+  }
+
+  /**
+   * Get all saved tools
+   */
+  async getSavedTools(): Promise<any[]> {
+    const response = await this.apiClient.get('/tools/saved');
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to get saved tools');
+    }
+
+    return response.tools || [];
+  }
+
+  /**
+   * Delete a saved tool
+   */
+  async deleteTool(toolId: string): Promise<void> {
+    const response = await this.apiClient.delete(`/tools/${toolId}`);
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to delete tool');
+    }
+  }
+
+  /**
+   * Test a generated tool by executing its Python code
+   */
+  async testGeneratedTool(pythonCode: string, sessionId?: string): Promise<{ result: string; success: boolean }> {
+    // If we have a session ID, use it to generate Playwright code for testing
+    // Otherwise, use the provided code (which should be Playwright format)
+    const payload = sessionId ? { sessionId } : { code: pythonCode };
+    
+    const response = await this.apiClient.post('/recorder/test-tool', payload);
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to test generated tool');
+    }
+
+    return {
+      result: response.result || response.message || 'Tool executed successfully',
+      success: true
     };
   }
 

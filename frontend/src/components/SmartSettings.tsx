@@ -7,6 +7,8 @@ import { Badge } from '../ui/Badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/Tabs';
 import { CredentialValidationService } from '../services/CredentialValidationService';
 import { useTenant } from '../hooks/useTenant';
+import { Bot, Search, Database, BookOpen, Settings, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ExtensionDownloadModal } from './ExtensionDownloadModal';
 
 interface APIProvider {
   id: string;
@@ -97,7 +99,7 @@ interface SmartSettingsProps {
 export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSettingsProps = {}) {
   const { tenant, updateTenant } = useTenant();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('ai');
+  const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -217,7 +219,7 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
   };
 
 
-  const handleSaveConfiguration = async () => {
+  const handleSaveConfiguration = async (markComplete = false) => {
     setLoading(true);
     
     try {
@@ -227,7 +229,7 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
         return;
       }
 
-      // Validate all configurations if they haven't been validated yet
+      // Validate all configurations if they haven't been validated yet - but don't re-validate if already valid
       let databaseValid = validationStatus.database === 'valid' ? { valid: true } : await validateCredentials('database', databaseConfig);
       let aiValid = validationStatus.ai === 'valid' ? { valid: true } : await validateCredentials('ai', aiConfig);
       let embeddingValid = validationStatus.embeddings === 'valid' ? { valid: true } : await validateCredentials('embeddings', embeddingConfig);
@@ -243,12 +245,12 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
         embeddingModel: embeddingConfig.model,
         embeddingBaseUrl: embeddingConfig.baseUrl,
         configured: databaseValid.valid && aiValid.valid && embeddingValid.valid, // Only mark as fully configured if all are valid
-        setupComplete: databaseValid.valid && aiValid.valid && embeddingValid.valid && validationStatus.documentation === 'valid', // Mark setup complete when all validations pass
+        setupComplete: markComplete && databaseValid.valid && aiValid.valid && embeddingValid.valid, // Only mark setup complete when explicitly requested
         validationStatus: {
           database: databaseValid.valid,
           ai: aiValid.valid,
           embeddings: embeddingValid.valid,
-          documentation: validationStatus.documentation === 'valid'
+          index: validationStatus.index === 'valid'
         },
         apiKeys: {
           ...tenant?.settings?.apiKeys,
@@ -263,9 +265,11 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
         settings: updatedSettings 
       });
       
-      // Show confirmation page
-      setShowConfirmation(true);
-      setSaveSuccess(true);
+      // Only show confirmation page when explicitly completing setup
+      if (markComplete) {
+        setShowConfirmation(true);
+        setSaveSuccess(true);
+      }
       
       // Show validation warnings if any failed
       if (!databaseValid.valid || !aiValid.valid || !embeddingValid.valid) {
@@ -279,102 +283,210 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
       
     } catch (error: any) {
       console.error('Failed to save configuration:', error);
-      alert(`❌ Failed to save configuration: ${error.message}`);
+      alert(`Failed to save configuration: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const isSetupComplete = 
-    validationStatus.database === 'valid' && 
-    validationStatus.ai === 'valid' && 
-    validationStatus.embeddings === 'valid' &&
-    validationStatus.documentation === 'valid';
-    
   const handleBackToEditing = () => {
     setShowConfirmation(false);
     setSaveSuccess(false);
   };
 
+  const steps = [
+    { id: 'ai', title: 'AI Provider', description: 'Configure your AI service', icon: Bot },
+    { id: 'embeddings', title: 'Embeddings', description: 'Setup vector search', icon: Search },
+    { id: 'database', title: 'Database', description: 'Connect your database', icon: Database },
+    { id: 'index', title: 'Documentation', description: 'Index your docs', icon: BookOpen }
+  ];
+
+  const isStepComplete = (stepId: string) => validationStatus[stepId] === 'valid';
+  const isSetupComplete = steps.every(step => isStepComplete(step.id));
+  const isStepActive = (stepIndex: number) => stepIndex === currentStep;
+  const canProceedToStep = (stepIndex: number) => {
+    // In settings mode (not onboarding), allow navigation to any step
+    if (!isOnboarding) return true;
+    
+    // In onboarding mode, enforce step-by-step progression
+    if (stepIndex === 0) return true;
+    return isStepComplete(steps[stepIndex - 1].id);
+  };
+
+  const nextStep = () => {
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // Removed auto-save on validation to prevent save loops during testing
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 pt-16">
-      <div className="container max-w-4xl mx-auto px-6 py-8 space-y-6">
+    <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-lg p-6 min-h-screen">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">⚙️ Smart Settings</h1>
-            <p className="text-muted-foreground mt-2">
-              Connect your services and configure your automation workspace
+            <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
+              <Settings className="w-10 h-10 text-blue-400" />
+              Smart Settings
+            </h1>
+            <p className="text-gray-300">
+              {isOnboarding 
+                ? 'Complete each step to set up your automation workspace' 
+                : 'Configure your automation workspace settings'
+              }
             </p>
+            {!isOnboarding && (
+              <div className="mt-2">
+                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                  Settings Mode - Jump to any step
+                </Badge>
+              </div>
+            )}
           </div>
           
           {isSetupComplete && (
-            <Badge variant="default" className="bg-green-600">
-              ✅ Setup Complete
-            </Badge>
+            <div className="flex items-center space-x-2 text-sm px-4 py-2 rounded-full border transition-all duration-300 bg-green-500/10 border-green-500/30 text-green-400 shadow-lg shadow-green-500/20">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+              <span className="font-medium">Setup Complete</span>
+            </div>
           )}
         </div>
 
-        {/* Setup Progress - 4 Cards as requested */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <h2 className="text-xl font-semibold">Setup Progress</h2>
-            {showConfirmation && (
-              <Button 
-                variant="ghost" 
-                onClick={handleBackToEditing}
-                className="text-gray-600 hover:text-gray-900"
-              >
-                <span className="mr-2">←</span> Back to Edit
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <SetupProgressCard
-                title="AI"
-                status={validationStatus.ai || 'idle'}
-                description="Language model configuration"
-              />
-              <SetupProgressCard
-                title="Embeddings"
-                status={validationStatus.embeddings || 'idle'}
-                description="Vector search setup"
-              />
-              <SetupProgressCard
-                title="Database"
-                status={validationStatus.database || 'idle'}
-                description="Supabase connection"
-              />
-              <SetupProgressCard
-                title="Index"
-                status={validationStatus.documentation || 'idle'}
-                description="Documentation indexed"
-              />
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* 4-Tab Interface - Only show when not in confirmation mode */}
+        {/* Step-by-Step Panels - Only show when not in confirmation mode */}
         {!showConfirmation && (
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="ai">🤖 AI</TabsTrigger>
-              <TabsTrigger value="embeddings">🔍 Embeddings</TabsTrigger>
-              <TabsTrigger value="database">🗄️ Database</TabsTrigger>
-              <TabsTrigger value="index">📚 Index</TabsTrigger>
-            </TabsList>
+          <div className="grid lg:grid-cols-4 gap-6">
 
-            {/* AI Tab */}
-            <TabsContent value="ai" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <h3 className="text-lg font-semibold">🤖 AI Provider Configuration</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Choose your preferred AI service for agent creation
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
+            {/* Left Column: Steps Navigation */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h3 className="text-xl font-bold text-white mb-6">Setup Steps</h3>
+              
+              <div className="space-y-4">
+                {steps.map((step, index) => {
+                  const IconComponent = step.icon;
+                  return (
+                    <div key={step.id} className={`p-4 rounded-lg border transition-all duration-300 ${ 
+                      canProceedToStep(index) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+                    } ${ 
+                      isStepComplete(step.id)
+                        ? 'bg-green-500/20 border-green-500/30'
+                        : isStepActive(index)
+                        ? 'bg-blue-500/20 border-blue-500/30'
+                        : canProceedToStep(index)
+                        ? 'bg-white/5 border-white/10 hover:bg-white/10'
+                        : 'bg-gray-700/20 border-gray-600/30'
+                    }`} onClick={() => canProceedToStep(index) && setCurrentStep(index)}>
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                          isStepComplete(step.id)
+                            ? 'bg-green-500 text-white'
+                            : isStepActive(index)
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-600 text-gray-300'
+                        }`}>
+                          {isStepComplete(step.id) ? <Check className="w-4 h-4" /> : <IconComponent className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className={`font-medium text-sm ${
+                            isStepActive(index) ? 'text-white' : 'text-gray-100'
+                          }`}>
+                            {step.title}
+                          </div>
+                          <div className="text-xs text-gray-300">{step.description}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Step Navigation */}
+              <div className="flex justify-between mt-6 pt-4 border-t border-white/20">
+                <button
+                  onClick={prevStep}
+                  disabled={currentStep === 0}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 text-sm ${
+                    currentStep === 0
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                  }`}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Prev
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (currentStep === steps.length - 1) {
+                      // On last step, trigger save and completion
+                      handleSaveConfiguration(true);
+                    } else {
+                      nextStep();
+                    }
+                  }}
+                  disabled={isOnboarding && !isStepComplete(steps[currentStep].id)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 text-sm ${
+                    isOnboarding && !isStepComplete(steps[currentStep].id)
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : currentStep === steps.length - 1 && isStepComplete(steps[currentStep].id)
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
+                      : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white'
+                  }`}
+                >
+                  {currentStep === steps.length - 1 ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      {isOnboarding ? 'Complete Setup' : 'Save & Done'}
+                    </>
+                  ) : (
+                    <>
+                      {isOnboarding ? 'Next' : 'Save & Next'}
+                      <ChevronRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Columns: Current Step Settings Panel (spans 3 columns) */}
+            <div className="lg:col-span-3 bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    isStepComplete(steps[currentStep].id)
+                      ? 'bg-green-500 text-white'
+                      : 'bg-blue-500 text-white'
+                  }`}>
+                    {isStepComplete(steps[currentStep].id) ? (
+                      <Check className="w-6 h-6" />
+                    ) : (
+                      React.createElement(steps[currentStep].icon, { className: "w-6 h-6" })
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">{steps[currentStep].title}</h3>
+                    <p className="text-gray-100 text-base">{steps[currentStep].description}</p>
+                  </div>
+                </div>
+                {isStepComplete(steps[currentStep].id) && (
+                  <Badge className="bg-green-500/20 text-green-300 border-green-500/30">
+                    <Check className="w-4 h-4 mr-1" />
+                    Complete
+                  </Badge>
+                )}
+              </div>
+
+              {/* AI Step Content */}
+              {steps[currentStep].id === 'ai' && (
+                <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     {AI_PROVIDERS.map((provider) => (
                       <ProviderCard
@@ -404,55 +516,51 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm font-medium mb-1">Primary Model</label>
+                        <label className="block text-sm font-medium mb-1 text-white">Primary Model</label>
                         <select
                           value={aiConfig.primaryModel}
                           onChange={(e) => setAIConfig(prev => ({ ...prev, primaryModel: e.target.value }))}
-                          className="w-full px-3 py-2 border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                          className="w-full px-3 py-2 border border-white/20 bg-white/10 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 text-white"
                         >
                           {AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.models?.map(model => (
-                            <option key={model} value={model}>{model}</option>
+                            <option key={model} value={model} className="bg-gray-800 text-white">{model}</option>
                           ))}
                         </select>
                       </div>
                       
                       <div>
-                        <label className="block text-sm font-medium mb-1">Reasoner Model (Optional)</label>
+                        <label className="block text-sm font-medium mb-1 text-white">Reasoner Model (Optional)</label>
                         <select
                           value={aiConfig.reasonerModel || ''}
                           onChange={(e) => setAIConfig(prev => ({ ...prev, reasonerModel: e.target.value || undefined }))}
-                          className="w-full px-3 py-2 border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                          className="w-full px-3 py-2 border border-white/20 bg-white/10 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 text-white"
                         >
-                          <option value="">None selected</option>
+                          <option value="" className="bg-gray-800 text-white">None selected</option>
                           {AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.models?.map(model => (
-                            <option key={model} value={model}>{model}</option>
+                            <option key={model} value={model} className="bg-gray-800 text-white">{model}</option>
                           ))}
                         </select>
                       </div>
                     </div>
                     
-                    <Button
+                    <button
                       onClick={() => validateCredentials('ai', aiConfig)}
                       disabled={!aiConfig.apiKey}
-                      className="w-full"
+                      className={`w-full py-3 px-4 rounded-lg font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+                        !aiConfig.apiKey
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white'
+                      }`}
                     >
-                      {validationStatus.ai === 'validating' ? '🔄 Testing...' : '🧪 Test AI Connection'}
-                    </Button>
+                      {validationStatus.ai === 'validating' ? 'Testing Connection...' : 'Test AI Connection'}
+                    </button>
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                </div>
+              )}
 
-            {/* Embeddings Tab */}
-            <TabsContent value="embeddings" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <h3 className="text-lg font-semibold">🔍 Embedding Provider Configuration</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Configure vector embeddings for intelligent search and retrieval
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              {/* Embeddings Step Content */}
+              {steps[currentStep].id === 'embeddings' && (
+                <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-3">
                     {EMBEDDING_PROVIDERS.map((provider) => (
                       <ProviderCard
@@ -481,102 +589,94 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
                     />
                     
                     <div>
-                      <label className="block text-sm font-medium mb-1">Embedding Model</label>
+                      <label className="block text-sm font-medium mb-1 text-white">Embedding Model</label>
                       <select
                         value={embeddingConfig.model}
                         onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model: e.target.value }))}
-                        className="w-full px-3 py-2 border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                        className="w-full px-3 py-2 border border-white/20 bg-white/10 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 text-white"
                       >
                         {EMBEDDING_PROVIDERS.find(p => p.id === embeddingConfig.provider)?.models?.map(model => (
-                          <option key={model} value={model}>{model}</option>
+                          <option key={model} value={model} className="bg-gray-800 text-white">{model}</option>
                         ))}
                       </select>
                     </div>
                     
-                    <Button
+                    <button
                       onClick={() => validateCredentials('embeddings', embeddingConfig)}
                       disabled={!embeddingConfig.model}
-                      className="w-full"
+                      className={`w-full py-3 px-4 rounded-lg font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+                        !embeddingConfig.model
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white'
+                      }`}
                     >
-                      {validationStatus.embeddings === 'validating' ? '🔄 Testing...' : '🧪 Test Embedding Connection'}
-                    </Button>
+                      {validationStatus.embeddings === 'validating' ? 'Testing Connection...' : 'Test Embedding Connection'}
+                    </button>
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Database Tab */}
-            <TabsContent value="database" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <h3 className="text-lg font-semibold">🗄️ Database Configuration</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Configure your database for storing recordings, tools, and automation data
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <DatabaseOptionCard
-                  title="🔄 Use Your Supabase"
-                  description="Connect your existing Supabase instance"
-                  selected={databaseConfig.type === 'user_supabase'}
-                  onClick={() => setDatabaseConfig(prev => ({ ...prev, type: 'user_supabase' }))}
-                />
-                
-                <DatabaseOptionCard
-                  title="🏗️ Managed Database"
-                  description="We handle the database for you ($5/month)"
-                  selected={databaseConfig.type === 'managed_postgres'}
-                  onClick={() => setDatabaseConfig(prev => ({ ...prev, type: 'managed_postgres' }))}
-                  disabled={true}
-                  badge="Coming Soon"
-                />
-              </div>
-
-              {databaseConfig.type === 'user_supabase' && (
-                <div className="space-y-3 p-4 border rounded-lg">
-                  <Input
-                    label="Supabase URL"
-                    value={databaseConfig.supabaseUrl || ''}
-                    onChange={(e) => setDatabaseConfig(prev => ({ ...prev, supabaseUrl: e.target.value }))}
-                    placeholder="https://your-project.supabase.co"
-                  />
-                  
-                  <Input
-                    label="Service Key"
-                    type="password"
-                    value={databaseConfig.supabaseServiceKey || ''}
-                    onChange={(e) => setDatabaseConfig(prev => ({ ...prev, supabaseServiceKey: e.target.value }))}
-                    placeholder="Your service_role key from Supabase"
-                  />
-                  
-                  <div className="text-xs text-muted-foreground">
-                    💡 Find these in your Supabase project settings → API
-                  </div>
-                  
-                  <Button
-                    onClick={() => validateCredentials('database', databaseConfig)}
-                    disabled={!databaseConfig.supabaseUrl || !databaseConfig.supabaseServiceKey}
-                    className="w-full"
-                  >
-                    {validationStatus.database === 'validating' ? '🔄 Testing...' : '🧪 Test Database Connection'}
-                  </Button>
                 </div>
               )}
-              </CardContent>
-              </Card>
-            </TabsContent>
 
-            {/* Index Tab */}
-            <TabsContent value="index" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <h3 className="text-lg font-semibold">📚 Documentation Index</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Index documentation for enhanced AI agent capabilities
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              {/* Database Step Content */}  
+              {steps[currentStep].id === 'database' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <DatabaseOptionCard
+                      title="Use Your Supabase"
+                      description="Connect your existing Supabase instance"
+                      selected={databaseConfig.type === 'user_supabase'}
+                      onClick={() => setDatabaseConfig(prev => ({ ...prev, type: 'user_supabase' }))}
+                    />
+                    
+                    <DatabaseOptionCard
+                      title="Managed Database"
+                      description="We handle the database for you ($5/month)"
+                      selected={databaseConfig.type === 'managed_postgres'}
+                      onClick={() => setDatabaseConfig(prev => ({ ...prev, type: 'managed_postgres' }))}
+                      disabled={true}
+                      badge="Coming Soon"
+                    />
+                  </div>
+
+                  {databaseConfig.type === 'user_supabase' && (
+                    <div className="space-y-3 p-4 border border-white/20 rounded-lg bg-white/5">
+                      <Input
+                        label="Supabase URL"
+                        value={databaseConfig.supabaseUrl || ''}
+                        onChange={(e) => setDatabaseConfig(prev => ({ ...prev, supabaseUrl: e.target.value }))}
+                        placeholder="https://your-project.supabase.co"
+                      />
+                      
+                      <Input
+                        label="Service Key"
+                        type="password"
+                        value={databaseConfig.supabaseServiceKey || ''}
+                        onChange={(e) => setDatabaseConfig(prev => ({ ...prev, supabaseServiceKey: e.target.value }))}
+                        placeholder="Your service_role key from Supabase"
+                      />
+                      
+                      <div className="text-xs text-gray-400">
+                        Find these in your Supabase project settings → API
+                      </div>
+                      
+                      <button
+                        onClick={() => validateCredentials('database', databaseConfig)}
+                        disabled={!databaseConfig.supabaseUrl || !databaseConfig.supabaseServiceKey}
+                        className={`w-full py-3 px-4 rounded-lg font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+                          !databaseConfig.supabaseUrl || !databaseConfig.supabaseServiceKey
+                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
+                        }`}
+                      >
+                        {validationStatus.database === 'validating' ? 'Testing Connection...' : 'Test Database Connection'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Documentation Step Content */}
+              {steps[currentStep].id === 'index' && (
+                <div className="space-y-4">
                   <DocumentationCrawler 
                     supabaseUrl={databaseConfig.supabaseUrl}
                     supabaseKey={databaseConfig.supabaseServiceKey}
@@ -584,93 +684,76 @@ export function SmartSettings({ onSetupComplete, isOnboarding = false }: SmartSe
                     onStatusChange={(isValid) => {
                       setValidationStatus(prev => ({
                         ...prev,
-                        documentation: isValid ? 'valid' : 'invalid'
+                        index: isValid ? 'valid' : 'invalid'
                       }));
                     }}
                   />
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        )}
-
-        {/* Save Configuration Bar - Only show when all 4 cards are valid and not in confirmation mode */}
-        {isSetupComplete && !showConfirmation && (
-          <div className="mt-8">
-            <Card>
-              <CardContent className="py-6">
-                <div className="flex items-center justify-center">
-                  <Button
-                    onClick={handleSaveConfiguration}
-                    disabled={loading}
-                    size="lg"
-                    className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                  >
-                    {loading ? '🔄 Saving...' : '💾 Save Configuration'}
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+            </div>
           </div>
         )}
 
+
         {/* Confirmation Page - Only show when in confirmation mode */}
         {showConfirmation && (
-          <Card className="mt-8 border-green-200 bg-green-50">
-            <CardContent className="py-6">
-              <div className="text-center">
-                <div className="text-green-600 text-4xl mb-4">✅</div>
-                <h3 className="text-green-800 font-semibold text-xl mb-2">Configuration Saved Successfully!</h3>
-                <p className="text-green-700 mb-6">
-                  Your automation workspace is fully configured and ready to use.
-                </p>
+          <div className="mt-8 bg-white/10 backdrop-blur-lg rounded-xl p-8 border border-green-500/30">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-white font-semibold text-2xl mb-2">Configuration Complete!</h3>
+              <p className="text-gray-300 mb-8">
+                Your automation workspace is fully configured and ready to use.
+              </p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                  <div className="p-3 bg-white rounded-lg border border-green-200">
-                    <div className="text-2xl mb-1">🤖</div>
-                    <div className="text-sm font-medium text-green-800">AI Provider</div>
-                    <div className="text-xs text-green-600">{aiConfig.provider} connected</div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div className="p-4 bg-white/5 rounded-lg border border-white/20">
+                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Bot className="w-4 h-4 text-white" />
                   </div>
-                  <div className="p-3 bg-white rounded-lg border border-green-200">
-                    <div className="text-2xl mb-1">🔍</div>
-                    <div className="text-sm font-medium text-green-800">Embeddings</div>
-                    <div className="text-xs text-green-600">Vector search ready</div>
-                  </div>
-                  <div className="p-3 bg-white rounded-lg border border-green-200">
-                    <div className="text-2xl mb-1">🗄️</div>
-                    <div className="text-sm font-medium text-green-800">Database</div>
-                    <div className="text-xs text-green-600">Supabase connected</div>
-                  </div>
-                  <div className="p-3 bg-white rounded-lg border border-green-200">
-                    <div className="text-2xl mb-1">📖</div>
-                    <div className="text-sm font-medium text-green-800">Index</div>
-                    <div className="text-xs text-green-600">Documentation indexed</div>
-                  </div>
+                  <div className="text-sm font-medium text-white">AI Provider</div>
+                  <div className="text-xs text-gray-300">{aiConfig.provider} connected</div>
                 </div>
-                
-                <div className="flex justify-center space-x-3">
-                  <Button onClick={() => {
-                    console.log('Dashboard button clicked, isOnboarding:', isOnboarding);
-                    console.log('tenant:', tenant);
-                    console.log('localStorage mymcp_tenant:', localStorage.getItem('mymcp_tenant'));
-                    
-                    // Force a page reload to re-evaluate onboarding state
-                    window.location.href = '/dashboard';
-                  }}>
-                    🚀 Go to Dashboard
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    console.log('Recorder button clicked, isOnboarding:', isOnboarding);
-                    
-                    // Force a page reload to re-evaluate onboarding state
-                    window.location.href = '/recorder';
-                  }}>
-                    🎬 Start Recording
-                  </Button>
+                <div className="p-4 bg-white/5 rounded-lg border border-white/20">
+                  <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Search className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-sm font-medium text-white">Embeddings</div>
+                  <div className="text-xs text-gray-300">Vector search ready</div>
+                </div>
+                <div className="p-4 bg-white/5 rounded-lg border border-white/20">
+                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Database className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-sm font-medium text-white">Database</div>
+                  <div className="text-xs text-gray-300">Supabase connected</div>
+                </div>
+                <div className="p-4 bg-white/5 rounded-lg border border-white/20">
+                  <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <BookOpen className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-sm font-medium text-white">Documentation</div>
+                  <div className="text-xs text-gray-300">Ready for indexing</div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+                
+              <div className="flex justify-center">
+                <Button 
+                  onClick={() => {
+                    if (isOnboarding && onSetupComplete) {
+                      onSetupComplete();
+                    } else {
+                      navigate('/download-extension');
+                    }
+                  }}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 px-8"
+                >
+                  Get Extension
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         </div>
@@ -691,10 +774,10 @@ function SetupProgressCard({
 }) {
   const getStatusIcon = () => {
     switch (status) {
-      case 'valid': return '✅';
-      case 'invalid': return '❌';
-      case 'validating': return '🔄';
-      default: return '⏳';
+      case 'valid': return 'Valid';
+      case 'invalid': return 'Invalid';
+      case 'validating': return 'Validating';
+      default: return 'Pending';
     }
   };
 
@@ -734,15 +817,24 @@ function ProviderCard({
 }) {
   return (
     <div
-      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-        selected ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
+      className={`p-4 border rounded-lg cursor-pointer transition-all duration-300 ${
+        selected 
+          ? 'border-cyan-400 bg-cyan-500/20 shadow-lg shadow-cyan-500/25' 
+          : 'border-white/20 bg-white/5 hover:border-cyan-400/50 hover:bg-white/10'
       }`}
       onClick={onClick}
     >
-      <div className="text-center">
-        <div className="text-lg mb-1">{provider.logoUrl ? '🔧' : '🤖'}</div>
-        <h4 className="font-medium text-sm">{provider.name}</h4>
-        <p className="text-xs text-muted-foreground">{provider.description}</p>
+      <div className="flex items-center space-x-3">
+        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+          <Bot className="w-4 h-4 text-white" />
+        </div>
+        <div className="flex-1">
+          <h4 className="font-medium text-white">{provider.name}</h4>
+          <p className="text-xs text-gray-300">{provider.description}</p>
+        </div>
+        {selected && (
+          <div className="text-cyan-400">✓</div>
+        )}
       </div>
     </div>
   );
@@ -765,22 +857,29 @@ function DatabaseOptionCard({
 }) {
   return (
     <div
-      className={`p-4 border rounded-lg cursor-pointer transition-colors relative ${
+      className={`p-4 border rounded-lg cursor-pointer transition-all duration-300 relative ${
         disabled 
-          ? 'border-gray-200 bg-gray-50 cursor-not-allowed' 
+          ? 'border-gray-600 bg-gray-700/20 cursor-not-allowed opacity-50' 
           : selected 
-            ? 'border-primary bg-primary/10' 
-            : 'border-border hover:border-primary/50'
+            ? 'border-green-400 bg-green-500/20 shadow-lg shadow-green-500/25' 
+            : 'border-white/20 bg-white/5 hover:border-green-400/50 hover:bg-white/10'
       }`}
       onClick={disabled ? undefined : onClick}
     >
       {badge && (
-        <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
+        <div className="absolute top-2 right-2 text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">
           {badge}
-        </Badge>
+        </div>
       )}
-      <h4 className="font-medium">{title}</h4>
-      <p className="text-sm text-muted-foreground mt-1">{description}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="font-medium text-white">{title}</h4>
+          <p className="text-sm text-gray-300 mt-1">{description}</p>
+        </div>
+        {selected && !disabled && (
+          <div className="text-green-400 text-xl">✓</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -880,11 +979,19 @@ function DocumentationCrawler({
         urlsFailed: 1,
         isRunning: false,
         endTime: Date.now(),
-        logs: [...prev.logs, 'Crawling completed successfully!']
+        logs: [...prev.logs, 'Crawling completed successfully!', 'Indexing documentation...']
       } : null);
       setDocCount(156); // Simulate indexed chunks
-      onStatusChange?.(true); // Mark documentation as valid
     }, 6000);
+
+    // Wait 10 seconds after crawling completes to enable the Complete Setup button
+    setTimeout(() => {
+      setCrawlStatus(prev => prev ? {
+        ...prev,
+        logs: [...prev.logs, 'Documentation indexed successfully! Setup is now complete.']
+      } : null);
+      onStatusChange?.(true); // Mark documentation as valid
+    }, 10000);
   };
 
   const clearDocuments = async () => {
@@ -909,7 +1016,7 @@ function DocumentationCrawler({
     return (
       <div className="p-4 border border-yellow-200 bg-yellow-50 rounded-lg">
         <div className="flex items-center space-x-2">
-          <span className="text-yellow-600">⚠️</span>
+          <span className="text-yellow-600">⚠</span>
           <div>
             <h4 className="font-medium text-yellow-800">Database Connection Required</h4>
             <p className="text-sm text-yellow-700">
@@ -961,7 +1068,7 @@ function DocumentationCrawler({
           disabled={loading || (crawlStatus?.isRunning)}
           className="flex-1"
         >
-          {crawlStatus?.isRunning ? '🔄 Crawling...' : '🕷️ Crawl Pydantic AI Docs'}
+          {crawlStatus?.isRunning ? 'Crawling Documentation...' : 'Crawl Pydantic AI Docs'}
         </Button>
         
         {docCount > 0 && (
@@ -971,7 +1078,7 @@ function DocumentationCrawler({
             disabled={loading}
             className="flex-1"
           >
-            {loading ? '🔄 Clearing...' : '🗑️ Clear Docs'}
+            {loading ? 'Clearing Documentation...' : 'Clear Docs'}
           </Button>
         )}
       </div>
@@ -1012,7 +1119,7 @@ function DocumentationCrawler({
 
       {/* Information */}
       <div className="text-xs text-muted-foreground p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-        <p className="font-medium mb-1">💡 About Documentation Crawling:</p>
+        <p className="font-medium mb-1">About Documentation Crawling:</p>
         <p>
           This feature crawls the Pydantic AI documentation, extracts content, generates embeddings, 
           and stores them in your Supabase database. Your AI agents can then use this knowledge 

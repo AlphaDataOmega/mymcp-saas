@@ -43,7 +43,7 @@ export class CredentialValidationService {
           error: errorData.error || `Validation failed: ${response.status}`
         };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Fallback: Basic format validation if backend is unavailable
       console.warn('Backend validation endpoint not available, using format validation fallback');
       
@@ -73,7 +73,7 @@ export class CredentialValidationService {
       try {
         const response = await fetch('http://localhost:11434/api/tags');
         return { valid: response.ok };
-      } catch (error: any) {
+      } catch (error: unknown) {
         return {
           valid: false,
           error: 'Cannot connect to Ollama. Make sure it is running on localhost:11434'
@@ -104,7 +104,7 @@ export class CredentialValidationService {
           };
         }
         return { valid: false, error: 'Cannot connect to Ollama' };
-      } catch (error: any) {
+      } catch (error: unknown) {
         return {
           valid: false,
           error: 'Cannot connect to Ollama. Make sure it is running on localhost:11434'
@@ -146,7 +146,7 @@ export class CredentialValidationService {
           error: errorData.error || `Validation failed: ${response.status}`
         };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Fallback: Basic format validation if backend is unavailable
       console.warn('Backend validation endpoint not available, using format validation fallback');
       
@@ -306,7 +306,7 @@ export class CredentialValidationService {
         }
       };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
         valid: false,
         error: `Table setup failed: ${error.message}`

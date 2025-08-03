@@ -370,6 +370,11 @@ if __name__ == "__main__":
       );
     });
   }
+
+  // Execute a tool (make executeTool public for testing)
+  async executeToolPublic(toolId: string, params: any): Promise<any> {
+    return this.executeTool(toolId, params);
+  }
 }
 
 // Singleton instance

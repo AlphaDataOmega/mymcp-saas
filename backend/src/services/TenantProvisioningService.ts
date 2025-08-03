@@ -1,110 +1,52 @@
 // Tenant Provisioning Service - Spins up mini instances for each user
+// STATUS: PLACEHOLDER - Not yet implemented. Requires Docker, DNS, and Database services.
 
 import { Tenant, TenantInstance, DatabaseConfig } from '../types/tenant';
-import { DockerService } from './DockerService';
-import { DNSService } from './DNSService';
-import { DatabaseService } from './DatabaseService';
+// TODO: Implement these services
+// import { DockerService } from './DockerService';
+// import { DNSService } from './DNSService';
+// import { DatabaseService } from './DatabaseService';
 
+/**
+ * PLACEHOLDER SERVICE - Not yet functional
+ * This service is designed for future multi-tenant deployment capabilities.
+ * Currently throws errors to prevent accidental usage.
+ */
 export class TenantProvisioningService {
-  private dockerService: DockerService;
-  private dnsService: DNSService;
-  private databaseService: DatabaseService;
+  // TODO: Uncomment when services are implemented
+  // private dockerService: DockerService;
+  // private dnsService: DNSService;
+  // private databaseService: DatabaseService;
 
   constructor() {
-    this.dockerService = new DockerService();
-    this.dnsService = new DNSService();
-    this.databaseService = new DatabaseService();
+    // TODO: Uncomment when services are implemented
+    // this.dockerService = new DockerService();
+    // this.dnsService = new DNSService();
+    // this.databaseService = new DatabaseService();
   }
 
   /**
    * Provision a complete tenant instance
+   * TODO: Implement when Docker, DNS, and Database services are ready
    */
   async provisionTenant(
     userId: string,
     subdomain: string,
     tier: 'free' | 'pro' | 'enterprise' = 'free'
   ): Promise<Tenant> {
+    throw new Error('TenantProvisioningService not yet implemented - missing Docker, DNS, and Database services');
+    
+    /* TODO: Uncomment when dependencies are implemented
     const tenantId = `tenant_${userId}_${Date.now()}`;
     
     try {
-      // 1. Validate subdomain availability
-      await this.validateSubdomain(subdomain);
-      
-      // 2. Create DNS record
-      await this.dnsService.createSubdomain(subdomain);
-      
-      // 3. Setup database (managed or user's Supabase)
-      const databaseConfig = await this.setupTenantDatabase(tenantId, tier);
-      
-      // 4. Deploy backend instance
-      const backendInstance = await this.deployBackendInstance({
-        tenantId,
-        subdomain,
-        databaseConfig,
-        tier
-      });
-      
-      // 5. Initialize tenant data
-      await this.initializeTenantData(tenantId, databaseConfig);
-      
-      // 6. Create tenant record
-      const tenant: Tenant = {
-        id: tenantId,
-        subdomain,
-        userId,
-        status: 'active',
-        tier,
-        createdAt: new Date().toISOString(),
-        lastActiveAt: new Date().toISOString(),
-        
-        instance: {
-          subdomain: `${subdomain}.mymcp.me`,
-          backendUrl: backendInstance.internalUrl,
-          frontendUrl: `https://${subdomain}.mymcp.me`,
-          databaseConfig,
-          storageConfig: {
-            bucket: `tenant-${tenantId}`,
-            region: 'us-east-1',
-            accessKey: backendInstance.storageCredentials.accessKey,
-            secretKey: backendInstance.storageCredentials.secretKey
-          },
-          status: 'running'
-        },
-        
-        settings: {
-          aiProvider: 'openai',
-          apiKeys: {},
-          oauthConnections: [],
-          theme: 'auto',
-          onboardingComplete: false,
-          features: {
-            advancedMode: false,
-            betaFeatures: false,
-            analytics: true
-          }
-        },
-        
-        usage: {
-          currentPeriodStart: new Date().toISOString(),
-          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          recordingSessions: 0,
-          toolsGenerated: 0,
-          agentExecutions: 0,
-          apiCalls: 0,
-          storageUsed: 0,
-          limits: this.getTierLimits(tier)
-        }
-      };
-      
-      await this.saveTenantRecord(tenant);
-      
-      return tenant;
-      
+      // Implementation code will go here...
+      // See git history for full implementation
     } catch (error) {
-      // Cleanup on failure
       await this.cleanupFailedProvisioning(tenantId, subdomain);
       throw error;
     }
+    */
   }
 
   /**

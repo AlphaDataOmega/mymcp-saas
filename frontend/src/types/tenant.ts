@@ -7,6 +7,7 @@ export interface Tenant {
   status: 'provisioning' | 'active' | 'suspended' | 'deleted';
   tier: 'free' | 'pro' | 'enterprise';
   createdAt: string;
+  updatedAt: string;
   lastActiveAt: string;
   
   // Instance configuration
@@ -23,8 +24,8 @@ export interface TenantInstance {
   subdomain: string;
   backendUrl: string;
   frontendUrl: string;
-  databaseConfig: DatabaseConfig;
-  storageConfig: StorageConfig;
+  databaseConfig?: DatabaseConfig;
+  storageConfig?: StorageConfig;
   status: 'provisioning' | 'running' | 'stopped' | 'error';
 }
 
@@ -53,6 +54,7 @@ export interface TenantSettings {
   // UI Preferences
   theme: 'light' | 'dark' | 'auto';
   onboardingComplete: boolean;
+  setupComplete: boolean;
   
   // Feature flags
   features: {
@@ -106,3 +108,17 @@ export interface UseTenantReturn {
   updateTenant: (updates: Partial<Tenant>) => Promise<void>;
   refreshTenant: () => Promise<void>;
 }
+
+// Onboarding and billing types
+export type OnboardingStep = 
+  | 'welcome'
+  | 'database-setup'
+  | 'ai-provider'
+  | 'oauth-setup'
+  | 'plan-selection'
+  | 'payment'
+  | 'complete'
+  | 'landing'
+  | 'credentials'
+  | 'plugin';
+

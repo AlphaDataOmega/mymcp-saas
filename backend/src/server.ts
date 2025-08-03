@@ -49,8 +49,15 @@ export async function createServerWithTools(options: Options): Promise<Server> {
     // Handle incoming messages from browser extension
     websocket.on('message', (data) => {
       try {
-        console.log("📨 Raw WebSocket data:", data.toString().substring(0, 500));
         const message = JSON.parse(data.toString());
+        
+        // Skip processing response messages from extension (they have 'result' field)
+        if (message.result !== undefined) {
+          // Don't log spam - just silently skip response messages
+          return;
+        }
+        
+        console.log("📨 Raw WebSocket data:", data.toString().substring(0, 500));
         console.log("📨 Parsed message method:", message?.method);
         console.log("📨 Parsed message keys:", Object.keys(message || {}));
         
@@ -58,14 +65,14 @@ export async function createServerWithTools(options: Options): Promise<Server> {
         if (message.method === 'forwardCDPEvent') {
           console.log("🎬 Found CDP event to forward");
           handleCDPEventForRecording(message.params);
-        }
-        
-        // Send acknowledgment back to extension if it has an ID
-        if (message.id) {
-          websocket.send(JSON.stringify({
-            id: message.id,
-            result: { success: true }
-          }));
+          
+          // Send acknowledgment back to extension for CDP events
+          if (message.id) {
+            websocket.send(JSON.stringify({
+              id: message.id,
+              result: { success: true }
+            }));
+          }
         }
       } catch (error) {
         console.error("❌ Error processing WebSocket message:", error);

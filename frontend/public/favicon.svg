@@ -1,0 +1,45 @@
+<svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- ── DEFS ──────────────────────────────── -->
+  <defs>
+    <!-- key-cap gradient -->
+    <linearGradient id="g" x1="32" y1="288" x2="288" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#291B4B"/><stop offset=".55" stop-color="#511D7D"/><stop offset="1" stop-color="#401D67"/>
+    </linearGradient>
+    <!-- glow around key-cap -->
+    <filter id="capGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#511D7D" flood-opacity="0.55"/>
+    </filter>
+    <!-- glow for inner dots -->
+    <filter id="dotGlow" x="-200%" y="-200%" width="500%" height="500%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="currentColor" flood-opacity=".65"/>
+    </filter>
+  </defs>
+
+  <!-- ── KEY-CAP BACKGROUND ────────────────── -->
+  <rect x="20" y="20" width="280" height="280" rx="28" fill="url(#g)" filter="url(#capGlow)"/>
+
+  <!-- ── WHITE "M" STROKE (base) ───────────── -->
+  <path d="M88 224 V104 L160 176 L232 104 V224"
+        stroke="white" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+
+  <!-- ── BLUE CONNECTOR (thinner) ──────────── -->
+  <path d="M88 224 L88 104 L160 176 L232 104 L232 224"
+        stroke="#3F85E5" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- ── NODES (white ring + multicolour dot) ─ -->
+  <!-- ringR = 14 | dotR = 8 -->
+  <circle cx="88"  cy="224" r="14" fill="white"/>
+  <circle cx="88"  cy="224" r="8"  fill="#3F85E5" filter="url(#dotGlow)"/>
+
+  <circle cx="88"  cy="104" r="14" fill="white"/>
+  <circle cx="88"  cy="104" r="8"  fill="#F72585" filter="url(#dotGlow)"/>
+
+  <circle cx="160" cy="176" r="14" fill="white"/>
+  <circle cx="160" cy="176" r="8"  fill="#FFD60A" filter="url(#dotGlow)"/>
+
+  <circle cx="232" cy="104" r="14" fill="white"/>
+  <circle cx="232" cy="104" r="8"  fill="#23C55E" filter="url(#dotGlow)"/>
+
+  <circle cx="232" cy="224" r="14" fill="white"/>
+  <circle cx="232" cy="224" r="8"  fill="#FF8A00" filter="url(#dotGlow)"/>
+</svg>

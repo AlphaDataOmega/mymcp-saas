@@ -1,24 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 
 // Components
 import { Dashboard } from './components/Dashboard';
 import { RecorderStudio } from './components/RecorderStudio';
 import { ToolManager } from './components/ToolManager';
-import { Marketplace } from './components/Marketplace';
+import { BackendMarketplace } from './components/BackendMarketplace';
 import { SmartSettings } from './components/SmartSettings';
+import { Documentation } from './components/Documentation';
 import { PaymentGate } from './components/PaymentGate';
 import { PluginDownload } from './components/PluginDownload';
 import { OnboardingComplete } from './components/OnboardingComplete';
+import { RecordingStart } from './pages/RecordingStart';
 
 // Providers and Hooks
 import { TenantProvider } from './providers/TenantProvider';
 import { ThemeProvider } from './providers/ThemeProvider';
 import { NavigationSidebar } from './components/NavigationSidebar';
 import { Header } from './components/Header';
+import { ExtensionDownloadModal } from './components/ExtensionDownloadModal';
+import { OnboardingDemoModal } from './components/OnboardingDemoModal';
 
 // Types
-import { Tenant, OnboardingStep, PricingPlan } from './types/tenant';
+import { Tenant, OnboardingStep } from './types/tenant';
+import { PricingPlan } from './types/billing';
+
+// Services
+import { createExtensionService, ExtensionStatus } from './services/ExtensionService';
 
 // Styles
 import './styles/globals.css';
@@ -27,10 +35,63 @@ function AppContent() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('landing');
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [extensionStatus, setExtensionStatus] = useState<'connected' | 'disconnected' | 'error'>('disconnected');
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
+  const [showOnboardingDemo, setShowOnboardingDemo] = useState(false);
 
   useEffect(() => {
     initializeApp();
   }, []);
+
+  // Immediate extension check on page load/refresh (before full tenant setup)
+  useEffect(() => {
+    const checkExtensionImmediately = async () => {
+      try {
+        // Use a basic tenant ID for immediate check - this will work even during onboarding
+        const savedTenant = localStorage.getItem('mymcp_tenant');
+        const tenantId = savedTenant ? JSON.parse(savedTenant).id : 'default';
+        
+        const extensionService = createExtensionService(tenantId);
+        const status = await extensionService.checkConnectionStatus();
+        
+        if (status.connected) {
+          setExtensionStatus('connected');
+        } else if (status.error) {
+          setExtensionStatus('error');
+        } else {
+          setExtensionStatus('disconnected');
+        }
+      } catch (error) {
+        console.log('Immediate extension check failed:', error);
+        setExtensionStatus('disconnected');
+      }
+    };
+
+    checkExtensionImmediately();
+  }, []); // Run once on mount
+
+  // Monitor extension connection status
+  useEffect(() => {
+    if (tenant?.settings?.setupComplete && tenant?.id) {
+      const extensionService = createExtensionService(tenant.id);
+      
+      const handleStatusUpdate = (status: ExtensionStatus) => {
+        if (status.connected) {
+          setExtensionStatus('connected');
+        } else if (status.error) {
+          setExtensionStatus('error');
+        } else {
+          setExtensionStatus('disconnected');
+        }
+      };
+
+      extensionService.startMonitoring(handleStatusUpdate);
+
+      return () => {
+        extensionService.stopMonitoring(handleStatusUpdate);
+      };
+    }
+  }, [tenant?.settings?.setupComplete, tenant?.id]);
 
   const initializeApp = async () => {
     try {
@@ -38,6 +99,14 @@ function AppContent() {
       const savedTenant = localStorage.getItem('mymcp_tenant');
       if (savedTenant) {
         const tenantData = JSON.parse(savedTenant);
+        
+        // Update URLs for development mode
+        if (process.env.NODE_ENV === 'development' && tenantData.instance) {
+          tenantData.instance.backendUrl = 'http://localhost:8100';
+          tenantData.instance.frontendUrl = 'http://localhost:3000';
+          localStorage.setItem('mymcp_tenant', JSON.stringify(tenantData));
+        }
+        
         setTenant(tenantData);
         
         // Determine current step based on tenant state
@@ -104,13 +173,43 @@ function AppContent() {
         userId: generateUserId(),
         subdomain: username,
         status: 'provisioning',
+        tier: 'free',
+        lastActiveAt: new Date().toISOString(),
         instance: {
           subdomain: `${username}.mymcp.me`,
-          backendUrl: `https://${username}-api.mymcp.me`,
-          frontendUrl: `https://${username}.mymcp.me`,
+          backendUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:8100' : `https://${username}-api.mymcp.me`,
+          frontendUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : `https://${username}.mymcp.me`,
           status: 'provisioning'
         },
-        settings: {},
+        settings: {
+          aiProvider: 'openai',
+          apiKeys: {},
+          oauthConnections: [],
+          theme: 'light',
+          onboardingComplete: false,
+          setupComplete: false,
+          features: {
+            advancedMode: false,
+            betaFeatures: false,
+            analytics: true
+          }
+        },
+        usage: {
+          currentPeriodStart: new Date().toISOString(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          recordingSessions: 0,
+          toolsGenerated: 0,
+          agentExecutions: 0,
+          apiCalls: 0,
+          storageUsed: 0,
+          limits: {
+            recordingSessions: 10,
+            toolsGenerated: 5,
+            agentExecutions: 100,
+            apiCalls: 1000,
+            storageLimit: 1024 * 1024 * 100 // 100MB
+          }
+        },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -165,10 +264,9 @@ function AppContent() {
     );
   }
 
-  // Show onboarding flow if not complete
-  console.log('App check - currentStep:', currentStep, 'setupComplete:', tenant?.settings?.setupComplete, 'tenant:', tenant);
+  // Show onboarding flow if not complete (but allow plugin step to show main app for routing)
   
-  if (currentStep !== 'complete' || !tenant?.settings?.setupComplete) {
+  if (currentStep !== 'complete' && currentStep !== 'plugin') {
     return (
       <div className="min-h-screen bg-background">
         <OnboardingFlow 
@@ -183,29 +281,67 @@ function AppContent() {
   // Show main application
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        {/* Sidebar Navigation */}
-        <NavigationSidebar />
+      <Routes>
+        {/* Standalone Plugin Download Page - No Layout */}
+        <Route path="/download-extension" element={
+          <div className="min-h-screen bg-background flex items-center justify-center p-4">
+            <PluginDownload />
+          </div>
+        } />
         
-        {/* Main Content */}
-        <div className="flex-1 ml-64">
-          {/* Header */}
-          <Header tenant={tenant} connectionStatus="disconnected" />
-          
-          {/* Page Content */}
-          <main className="p-8 min-h-[calc(100vh-4rem)]">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/recorder" element={<RecorderStudio />} />
-              <Route path="/tools" element={<ToolManager />} />
-              <Route path="/marketplace" element={<Marketplace />} />
-              <Route path="/settings" element={<SmartSettings />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </main>
-        </div>
-      </div>
+        {/* Main App with Layout */}
+        <Route path="*" element={
+          <div className="flex">
+            {/* Sidebar Navigation */}
+            <NavigationSidebar />
+            
+            {/* Main Content */}
+            <div className="flex-1 ml-64">
+              {/* Header */}
+              <Header 
+                tenant={tenant} 
+                connectionStatus={extensionStatus}
+                onShowExtensionModal={() => setShowExtensionModal(true)}
+              />
+              
+              {/* Page Content */}
+              <main className="p-8 min-h-[calc(100vh-4rem)]">
+                <Routes>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/recorder" element={<RecorderStudio />} />
+                  <Route path="/recording-start" element={<RecordingStart />} />
+                  <Route path="/tools" element={<ToolManager />} />
+                  <Route path="/marketplace" element={<BackendMarketplace />} />
+                  <Route path="/settings" element={<SmartSettings />} />
+                  <Route path="/documentation" element={<Documentation />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </main>
+            </div>
+          </div>
+        } />
+      </Routes>
+      
+      {/* Extension Download Modal */}
+      <ExtensionDownloadModal
+        isOpen={showExtensionModal}
+        onClose={() => setShowExtensionModal(false)}
+        onShowDemo={() => setShowOnboardingDemo(true)}
+        backendUrl={tenant?.instance.backendUrl || 'http://localhost:8100'}
+      />
+      
+      {/* Onboarding Demo Modal */}
+      <OnboardingDemoModal
+        isOpen={showOnboardingDemo}
+        onClose={() => setShowOnboardingDemo(false)}
+        onGoToRecorder={() => {
+          setShowOnboardingDemo(false);
+          // Navigation to recorder will be handled by the router
+          window.location.href = '/recorder';
+        }}
+        backendUrl={tenant?.instance.backendUrl || 'http://localhost:8100'}
+      />
     </div>
   );
 }
@@ -220,6 +356,15 @@ function OnboardingFlow({
   tenant: Tenant | null;
   onStepComplete: (step: OnboardingStep, data?: any) => void;
 }) {
+  const navigate = useNavigate();
+  
+  // Handle navigation for plugin step
+  useEffect(() => {
+    if (currentStep === 'plugin') {
+      navigate('/download-extension');
+    }
+  }, [currentStep, navigate]);
+  
   const handlePlanSelected = (plan: PricingPlan, skipped: boolean = false) => {
     onStepComplete('payment', { plan, skipped });
   };
@@ -260,17 +405,12 @@ function OnboardingFlow({
       );
       
     case 'plugin':
-      return (
-        <PluginDownload 
-          tenant={tenant}
-          onPluginInstalled={handlePluginInstalled}
-        />
-      );
+      // Navigation handled by useEffect
+      return null;
       
     case 'complete':
       return (
         <OnboardingComplete 
-          tenant={tenant}
           onActionSelected={handleActionSelected}
         />
       );
