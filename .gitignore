@@ -118,7 +118,7 @@ backend/clean_extension/
 backend/extension/
 
 # Service configurations
-services/
+# services/
 
 # Documentation (keep essential docs, exclude dev notes)
 _*.md
